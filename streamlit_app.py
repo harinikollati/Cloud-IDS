@@ -64,40 +64,59 @@ df = pd.read_csv(file)
 st.success("✅ Dataset uploaded successfully")
 
 # --------------------------------------------------
-# PREPROCESSING (FINAL & CLOUD-SAFE)
+# PREPROCESSING (FINAL CORRECT BLOCK)
 # --------------------------------------------------
+
+# Clean column names
 df.columns = df.columns.str.strip()
+
+# Handle infinite and missing values
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
 df.dropna(inplace=True)
 
+# Drop non-numeric / ID columns (same as training)
 DROP_COLS = [
     "Flow ID", "Source IP", "Destination IP",
     "Timestamp", "Protocol"
 ]
 df.drop(columns=DROP_COLS, errors="ignore", inplace=True)
 
+# Save ports for alert display
 original_ports = (
     df["Destination Port"].values
     if "Destination Port" in df.columns
     else np.zeros(len(df))
 )
 
+# Separate features
 X = df.drop("Label", axis=1, errors="ignore")
 
-# ---- FEATURE ALIGNMENT (CRITICAL) ----
+# --------------------------------------------------
+# STEP 1: FEATURE ALIGNMENT (CRITICAL FIX)
+# --------------------------------------------------
+
+# Add missing features
 for col in FEATURE_NAMES:
     if col not in X.columns:
         X[col] = 0
 
+# Remove extra features & enforce correct order
 X = X[FEATURE_NAMES]
 
-# 🔥 FINAL FIX (NO FEATURE NAME ERROR)
-X_scaled = SCALER.transform(X.values)
+# Convert to NumPy array (required by scaler)
+X = X.values
 
-# Save preprocessed logs (client side)
+# --------------------------------------------------
+# STEP 2: FEATURE SCALING
+# --------------------------------------------------
+X_scaled = SCALER.transform(X)
+
+# Save client-side preprocessed logs
 np.savez("client_side/preprocessed_logs.npz", X_scaled)
 
-st.success("✅ Preprocessing completed")
+st.success("✅ Preprocessing completed successfully")
+
+
 
 # --------------------------------------------------
 # CLIENT-SIDE ENCRYPTION (AES-256)
@@ -250,4 +269,5 @@ cm_df = pd.DataFrame(
 )
 
 st.dataframe(cm_df, use_container_width=True)
+
 
