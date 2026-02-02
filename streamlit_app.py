@@ -64,7 +64,7 @@ df = pd.read_csv(file)
 st.success("✅ Dataset uploaded successfully")
 
 # --------------------------------------------------
-# PREPROCESSING (SAFE & ALIGNED)
+# PREPROCESSING (FINAL & CLOUD-SAFE)
 # --------------------------------------------------
 df.columns = df.columns.str.strip()
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -76,17 +76,23 @@ DROP_COLS = [
 ]
 df.drop(columns=DROP_COLS, errors="ignore", inplace=True)
 
-original_ports = df["Destination Port"].values if "Destination Port" in df.columns else np.zeros(len(df))
+original_ports = (
+    df["Destination Port"].values
+    if "Destination Port" in df.columns
+    else np.zeros(len(df))
+)
 
 X = df.drop("Label", axis=1, errors="ignore")
 
-# ---- FEATURE ALIGNMENT (CRITICAL FIX) ----
+# ---- FEATURE ALIGNMENT (CRITICAL) ----
 for col in FEATURE_NAMES:
     if col not in X.columns:
         X[col] = 0
 
 X = X[FEATURE_NAMES]
-X_scaled = SCALER.transform(X)
+
+# 🔥 FINAL FIX (NO FEATURE NAME ERROR)
+X_scaled = SCALER.transform(X.values)
 
 # Save preprocessed logs (client side)
 np.savez("client_side/preprocessed_logs.npz", X_scaled)
@@ -120,7 +126,7 @@ with open("client_side/encrypted_logs.bin", "wb") as f:
 st.success("🔐 Logs encrypted on client side")
 
 # --------------------------------------------------
-# CLOUD TRANSMISSION (SIMULATED NETWORK TRANSFER)
+# CLOUD TRANSMISSION (SIMULATED REAL TRANSFER)
 # --------------------------------------------------
 with open("client_side/encrypted_logs.bin", "rb") as src:
     with open("cloud_side/received_encrypted_logs.bin", "wb") as dst:
@@ -144,14 +150,17 @@ with open("cloud_side/received_encrypted_logs.bin", "rb") as f:
 
 decrypted = decryptor.update(encrypted_cloud) + decryptor.finalize()
 
-X_cloud = np.frombuffer(decrypted, dtype=X_scaled.dtype).reshape(X_scaled.shape)
+X_cloud = np.frombuffer(
+    decrypted,
+    dtype=X_scaled.dtype
+).reshape(X_scaled.shape)
 
 np.savez("cloud_side/decrypted_logs.npz", X_cloud)
 
 st.success("☁️ Logs decrypted on cloud side")
 
 # --------------------------------------------------
-# IDS INFERENCE (NO RETRAINING)
+# IDS INFERENCE
 # --------------------------------------------------
 probs = MODEL.predict(X_cloud, verbose=0).ravel()
 preds = (probs >= THRESHOLD).astype(int)
@@ -211,15 +220,19 @@ st.download_button(
 # --------------------------------------------------
 st.subheader("📊 Evaluation Metrics")
 
-y = LabelEncoder().fit_transform(df["Label"]) if "Label" in df.columns else np.zeros(len(preds))
+y_true = (
+    LabelEncoder().fit_transform(df["Label"])
+    if "Label" in df.columns
+    else np.zeros(len(preds))
+)
 
-tn, fp, fn, tp = confusion_matrix(y, preds).ravel()
+tn, fp, fn, tp = confusion_matrix(y_true, preds).ravel()
 
 metrics = {
-    "Accuracy": accuracy_score(y, preds),
-    "Precision": precision_score(y, preds),
-    "Recall": recall_score(y, preds),
-    "F1 Score": f1_score(y, preds),
+    "Accuracy": accuracy_score(y_true, preds),
+    "Precision": precision_score(y_true, preds),
+    "Recall": recall_score(y_true, preds),
+    "F1 Score": f1_score(y_true, preds),
     "False Positives": int(fp),
     "False Negatives": int(fn),
     "False Positive Rate": fp / (fp + tn) if (fp + tn) > 0 else 0,
@@ -229,10 +242,12 @@ metrics = {
 st.json(metrics)
 
 st.subheader("📉 Confusion Matrix")
+
 cm_df = pd.DataFrame(
     [[tn, fp], [fn, tp]],
     columns=["Predicted Normal", "Predicted Attack"],
     index=["Actual Normal", "Actual Attack"]
 )
+
 st.dataframe(cm_df, use_container_width=True)
 
